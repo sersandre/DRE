@@ -1,0 +1,93 @@
+.box-body {
+  padding: 0 10px 10px 10px;
+}
+
+/*Custom close button (cross)*/
+div .div-btn-close button {
+  border-color: rgb(255, 255, 255);
+  background-color: rgb(255, 255, 255);
+  padding: 0;
+}
+
+.span-btn-move button {
+  border-color: rgb(255, 255, 255);
+  background-color: rgb(255, 255, 255);
+  padding: 0;
+}
+
+.div-btn-close-tablist button {
+  float: right;
+  position: absolute;
+  right: 40px;
+  top: 9px;
+}
+
+div .div-btn-close {
+  display: inline;
+}
+
+div .collapsible-tab-box {
+  padding: 0;
+}
+
+.ui-sortable-handle {
+  float: left;
+  width: 100%;
+}
+
+.tab-content {
+  /*max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;*/
+}
+
+.box-body>div {
+  padding: 0;
+}
+
+.box {
+  margin-bottom: 10px;
+}
+
+.disabled-anchor {
+  pointer-events: none;
+  opacity: 0.64;
+}
+
+.bttn.bttn-material-flat.bttn-default {
+  color: #444;
+}
+
+.sw-dropdown {
+  display: inline;
+}
+
+div.sw-dropdown-in {
+  /*Show all elements in one line*/
+  display: inline-flex;
+  padding: 7px 4px;
+  /*No line break within an element*/
+  white-space: nowrap;
+}
+
+.inner-box {
+  border-radius: 3px;
+  border-style: solid;
+  border-width: 1px;
+  border-color: #cccccc;
+  margin-bottom: 10px;
+}
+
+.inner-box .box {
+  box-shadow: unset;
+  border-top: unset;
+  margin-bottom: 0px;
+}
+
+.inner-box .box-title {
+  font-size: 16px;
+}
+
+.shiny-output-error-validation {
+  padding-bottom: 10px;
+}

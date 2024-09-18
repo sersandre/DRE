@@ -1,0 +1,93 @@
+## Einbinden der benötigten R Packages
+```{r, Packages laden, warning = FALSE, message = False}
+if(!require("devtools")) {
+  install.packages("devtools")
+}
+if (!require(weibulltools)) {
+  devtools::install_github("Tim-TU/weibulltools")
+  require(weibulltools)
+}
+if (!require(tidyverse)) {
+  install.packages("tidyverse")
+  require(tidyverse)
+}
+if (!require(plotly)) {
+  install.packages("plotly")
+  require(plotly)
+}
+if (!require(ggplot2)) {
+  install.packages("ggplot2")
+  require(ggplot2)
+}
+if(!require(xlsx)) {
+  install.packages("xlsx")
+  require(xlsx)
+}
+if(!require("dict")) {
+  devtools::install_github("mkuhn/dict")
+  require(dict)
+}
+```
+## Einlesen der Daten über das xlx-File
+```{r, Daten einlesen, warning = FALSE}
+library("xlsx")
+drahtauswahl_raw = read.xlsx(file="Testdaten_DRE_2024.xlsx", sheetName = 1, header = TRUE)
+raffungstest_raw = read.xlsx(file="Testdaten_DRE_2024.xlsx", sheetName = 2, header = TRUE)
+
+materials <- unique(drahtauswahl_raw["Material"])
+angles <- unique(raffungstest_raw["Winkel"])
+```
+## Drahtauswahl
+```{r, Drahtauswahl, warning = FALSE}
+generate_prob_plot <- function(raw_data, material) {
+  refined_data <- raw_data[raw_data$Material == material, ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+  
+  rel_data <- reliability_data(
+    x = refined_data$Biegungsanzahl,
+    status = refined_data$Status
+  )
+  
+  median_rank_data <- estimate_cdf(
+    x = rel_data,
+    methods = "mr"
+  )
+  weibull_params <- ml_estimation(
+  x = rel_data,
+  distribution = "weibull"
+  )
+  
+  plot <- plot_prob(
+    x = median_rank_data,
+    title_main = "n",
+    title_x = "n",
+    title_y = "n",
+    title_trace = "Ausfälle"
+  ) %>%
+    plot_mod(
+      x = weibull_params,
+      title_trace = "mle"
+  ) 
+  return (plot)
+}
+weibull_params <- ml_estimation(
+  x = rel_data,
+  distribution = "weibull"
+)
+weibull_params$shape_scale_coefficients
+
+quantile <- predict_quantile(
+  p = 0.5,
+  dist_params = weibull_params$coefficients,
+  distribution = "weibull"
+)
+
+for (material in materials$Material){
+  plot <- generate_prob_plot(drahtauswahl_raw, material)
+  plot
+}
+```
+## Testing
+```{r, Testing, warning = FALSE}
+
+```

@@ -39,7 +39,35 @@ angles <- unique(raffungstest_raw["Winkel"])
 ```
 ## Drahtauswahl
 ```{r, Drahtauswahl, warning = FALSE}
-generate_prob_plot <- function(raw_data, material) {
+material <- materials$Material[2]
+refined_data <- drahtauswahl_raw[drahtauswahl_raw$Material == material, ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+
+rel_data <- reliability_data(
+  x = refined_data$Biegungsanzahl,
+  status = refined_data$Status
+)
+median_rank_data <- estimate_cdf(
+  x = rel_data,
+  methods = "mr"
+)
+weibull_params <- ml_estimation(
+  x = rel_data,
+  distribution = "weibull"
+)
+plot <- plot_prob(
+    x = median_rank_data,
+    title_main = "Weibull - Ausfallwahrscheinlichkeiten",
+    title_x = "Biegungsanzahl",
+    title_y = "Ausfallwahrscheinlichkeit in %",
+    title_trace = sprintf("Ausfälle %s", material)
+  ) %>%
+    plot_mod(
+      x = weibull_params,
+      title_trace = sprintf("mle_%s", material),
+  ) 
+plot
+generate_prob_plot <- function(raw_data, material, plot) {
   refined_data <- raw_data[raw_data$Material == material, ] %>%
     select(c('Biegungsanzahl', 'Status'))
   
@@ -56,38 +84,192 @@ generate_prob_plot <- function(raw_data, material) {
   x = rel_data,
   distribution = "weibull"
   )
-  
-  plot <- plot_prob(
-    x = median_rank_data,
-    title_main = "n",
-    title_x = "n",
-    title_y = "n",
-    title_trace = "Ausfälle"
-  ) %>%
-    plot_mod(
-      x = weibull_params,
-      title_trace = "mle"
-  ) 
-  return (plot)
-}
-weibull_params <- ml_estimation(
-  x = rel_data,
-  distribution = "weibull"
-)
-weibull_params$shape_scale_coefficients
-
-quantile <- predict_quantile(
+  quantile <- predict_quantile(
   p = 0.5,
   dist_params = weibull_params$coefficients,
   distribution = "weibull"
-)
-
-for (material in materials$Material){
-  plot <- generate_prob_plot(drahtauswahl_raw, material)
-  plot
+  )
+  print(weibull_params$shape_scale_coefficients)
+  print(quantile)
+  plot <- add_trace(
+    p = plot,
+    x = ~median_rank_data$x,
+    y = median_rank_data$prob,
+    type = "scatter",
+    name = sprintf("Ausfälle %s", material)
+  ) %>%
+  plot_mod(
+    x = weibull_params,
+    title_trace = sprintf("mle_%s", material),
+    color = as.character(median_rank_data$x)
+  )
+  return (plot)
 }
+for (i in 2:length(materials$Material)) {
+  material <- materials$Material[i]
+ print(material)
+  plot <- generate_prob_plot(drahtauswahl_raw, "Al", plot)
+}
+#plot
+```
+
+
+## Raffungstest Parameter und Raffungsfaktoren
+```{r, Raffungstest, warning = FALSE}
+estimate_params <- function(raw_data, angle) {
+    refined_data <- raw_data[raw_data$Winkel == angle, ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+    
+    rel_data <- reliability_data(
+      x = refined_data$Biegungsanzahl,
+      status = refined_data$Status
+    )
+    weibull_params <- ml_estimation(
+      x = rel_data,
+      distribution = "weibull"
+    )
+    return (c(weibull_params$shape_scale_coefficients))
+}
+
+T_45 = estimate_params(raffungstest_raw, "45")[1]
+T_90 = estimate_params(raffungstest_raw, "90")[1]
+T_180 = estimate_params(raffungstest_raw, "180")[1]
+
+print(T_45/T_90)
+print(T_45/T_180)
+print(T_90/T_180)
+```
+
+```{r, Wöhlerplot, warning = FALSE}
+plot_woehler_layout <- function(x,
+                                y,
+                                title_main = "Wöhlerlinie",
+                                title_x = "Lebensdauermerkmal",
+                                title_y = "Belastungsmerkmal",
+                                title_trace = "Belastung",
+                                plot_method = c("plotly", "ggplot2")
+) {
+  
+  plot_method <- match.arg(plot_method)
+  
+  x_s <- x[!is.na(x) == T]
+  y_s <- y[!is.na(x) == T]
+  
+  # Weibull Layout anwenden: 
+  p_wb_layout <- weibulltools:::plot_layout(
+    x = x_s, 
+    distribution = "weibull", 
+    title_main = title_main, 
+    title_x = title_x, 
+    title_y = title_y, 
+    plot_method = plot_method
+  )
+  
+  # Werte der y-Achse müssen der Belastung entsprechen: 
+  y_vals <- unique(y_s)
+  
+  # Weibull Layout hins. der y-Achse manipulieren: 
+  if (plot_method == "plotly") {
+    p_woehler_layout <- p_wb_layout %>% 
+      plotly::layout(
+        yaxis = list(
+          tickvals = y_vals, 
+          ticktext = y_vals
+        )
+      )
+  } else {
+    p_woehler_layout <- p_wb_layout + 
+      ggplot2::scale_y_continuous(
+        breaks = y_vals, 
+        labels = y_vals, 
+        minor_breaks = FALSE
+      )
+  }
+    
+  # Datenpunkte eintragen: 
+  if (plot_method == "plotly") {
+    p_woehler_pts <- p_woehler_layout %>% 
+      plotly::add_trace(
+        x = ~x_s, 
+        y = ~y_s, 
+        type = "scatter",
+        mode = "markers", 
+        name = paste0(title_trace, ": ", as.character(y_s)),  
+        hoverinfo = "text",
+        color = ~as.character(y_s), # wichtig für die Farbordnung (gleich weibulltools)
+        colors = "Set2", 
+        text = ~paste(
+          paste("<br>", paste0(title_x, ":")), x_s,
+          paste("<br>", paste0(title_y, ":")), y_s
+        )
+      )
+      
+  } else {
+    p_woehler_pts <- p_woehler_layout + 
+      ggplot2::geom_point(
+        data = dplyr::tibble(x = x_s, y = y_s, color = as.character(y_s)), 
+        mapping = aes(x = x, y = y, color = color)
+      ) + 
+      ggplot2::labs(color = title_trace)
+  }
+    
+  p_woehler_pts
+}
+refined_data <- drahtauswahl_raw[drahtauswahl_raw$Material == "Al", ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+woehler_plot <- plot_woehler_layout(x = refined_data$Biegungsanzahl,
+                                    y = refined_data$)
 ```
 ## Testing
 ```{r, Testing, warning = FALSE}
+a_refined_data <- drahtauswahl_raw[drahtauswahl_raw$Material == "Cu", ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+b_refined_data <- drahtauswahl_raw[drahtauswahl_raw$Material == "Al", ] %>%
+    select(c('Biegungsanzahl', 'Status'))
+  
+a_rel_data <- reliability_data(
+  x = a_refined_data$Biegungsanzahl,
+  status = a_refined_data$Status
+)
+b_rel_data <- reliability_data(
+  x = b_refined_data$Biegungsanzahl,
+  status = b_refined_data$Status
+)
+
+a_median_rank_data <- estimate_cdf(
+  x = a_rel_data,
+  methods = "mr"
+)
+b_median_rank_data <- estimate_cdf(
+  x = b_rel_data,
+  methods = "mr"
+)
+a_weibull_params <- ml_estimation(
+  x = a_rel_data,
+  distribution = "weibull"
+)
+b_weibull_params <- ml_estimation(
+  x = b_rel_data,
+  distribution = "weibull"
+)
+plot <- plot_prob(
+    x = a_median_rank_data$x,
+    y = a_median_rank_data$prob,
+    status = a_median_rank_data$status,
+    title_main = "Weibull - Ausfallwahrscheinlichkeiten",
+    title_x = "Biegungsanzahl",
+    title_y = "Ausfallwahrscheinlichkeit in %",
+    title_trace = "Ausfälle"
+  ) %>% 
+  add_trace(
+    x = b_median_rank_data$x,
+    y = b_median_rank_data$prob,
+    type="scatter",
+    name = "Ausfälle 2"
+  )
+plot
+
+
 
 ```
+

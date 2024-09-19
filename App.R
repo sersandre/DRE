@@ -25,6 +25,8 @@ library(shinyWidgets)
 library(shinyBS)
 # weibulltools v. 2.0.0
 library(weibulltools)
+# R dictionary implementation
+library(dict)
 
 # Source source_directory.R
 source("./modules/predefined/source_directory.R", encoding = "UTF-8")

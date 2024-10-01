@@ -1,3 +1,4 @@
+# UI-Definition für Raffungstest
 raffungstest_ui <- function(id) {
   ns <- NS(id)
   
@@ -5,205 +6,223 @@ raffungstest_ui <- function(id) {
     data_selector_ui(
       id = ns("id_data_selector")
     ),
-    checkboxInput(ns("combine_plots"), "Wahrscheinlichkeitsnetz und Wöhlerlinie anzeigen", FALSE),
-    plotOutput(ns("weibull_plot")),
-    plotOutput(ns("woehler_plot")), 
+    checkboxInput(
+      ns("combine_plots"), 
+      "Weibull und Wöhlerlinie gemeinsam anzeigen", 
+      value = FALSE
+    ),
+    plotlyOutput(ns("weibull_plot")),
+    plotlyOutput(ns("woehler_plot")),
     dataTableOutput(ns("summary_table")),
     dataTableOutput(ns("raffungsfaktoren_table")),
     dataTableOutput(ns("probability_table"))
   )
 }
 
+# Server-Logik für Raffungstest
 raffungstest_server <- function(id, .values) {
   
-  moduleServer(
+  shiny::moduleServer(
     id, 
     function(input, output, session) {
       ns <- session$ns
       
-      # Reaktive Daten für alle Biegewinkel
+      # Reaktive Daten für den Winkel 45°
       data_45_r <- reactive({
         data <- data_selector_return$data_r()
         data[data$Winkel == 45, ]
       })
       
+      # Reaktive Daten für den Winkel 90°
       data_90_r <- reactive({
         data <- data_selector_return$data_r()
         data[data$Winkel == 90, ]
       })
       
+      # Reaktive Daten für den Winkel 180°
       data_180_r <- reactive({
         data <- data_selector_return$data_r()
         data[data$Winkel == 180, ]
       })
       
-      # Weibull-Parameter für jeden Winkel berechnen
-      weibull_params_45_r <- reactive({
-        rel_data_45 <- reliability_data(
-          x = data_45_r()$Biegungsanzahl,
-          status = data_45_r()$Status
-        )
-        ml_estimation(x = rel_data_45, distribution = "weibull")
+      # Weibull-Parameter für die Winkel 45°, 90°, 180°
+      weibull_params_r <- reactive({
+        data_combined <- rbind(data_45_r(), data_90_r(), data_180_r())
+        angles <- unique(data_combined$Winkel)
+        params <- list()
+        
+        for (angle in angles) {
+          refined_data <- data_combined[data_combined$Winkel == angle, ]
+          rel_data <- reliability_data(
+            x = refined_data$Biegungsanzahl,
+            status = refined_data$Status
+          )
+          weibull_params <- ml_estimation(x = rel_data, distribution = "weibull")
+          params[[as.character(angle)]] <- weibull_params
+        }
+        
+        return(params)
       })
       
-      weibull_params_90_r <- reactive({
-        rel_data_90 <- reliability_data(
-          x = data_90_r()$Biegungsanzahl,
-          status = data_90_r()$Status
-        )
-        ml_estimation(x = rel_data_90, distribution = "weibull")
-      })
-      
-      weibull_params_180_r <- reactive({
-        rel_data_180 <- reliability_data(
-          x = data_180_r()$Biegungsanzahl,
-          status = data_180_r()$Status
-        )
-        ml_estimation(x = rel_data_180, distribution = "weibull")
-      })
-      
-      # Median-Lebensdauer für jeden Winkel berechnen
-      median_lifetime_45_r <- reactive({
-        predict_quantile(
-          p = 0.5,
-          dist_params = weibull_params_45_r()$coefficients,
-          distribution = "weibull"
-        )
-      })
-      
-      median_lifetime_90_r <- reactive({
-        predict_quantile(
-          p = 0.5,
-          dist_params = weibull_params_90_r()$coefficients,
-          distribution = "weibull"
-        )
-      })
-      
-      median_lifetime_180_r <- reactive({
-        predict_quantile(
-          p = 0.5,
-          dist_params = weibull_params_180_r()$coefficients,
-          distribution = "weibull"
-        )
-      })
-      
-      # Weibull-Wahrscheinlichkeitsplot erstellen (für alle Winkel)
+      # Weibull-Wahrscheinlichkeitsplot für alle Winkel
       weibull_plot_r <- reactive({
-        plot <- NULL
+        data_combined <- rbind(data_45_r(), data_90_r(), data_180_r())
+        angles <- unique(data_combined$Winkel)
+        plot_data <- data.frame()
+        params <- weibull_params_r()
+        est_list <- list()
         
-        # Weibull Plot für 45°
-        rel_data_45 <- reliability_data(
-          x = data_45_r()$Biegungsanzahl,
-          status = data_45_r()$Status
-        )
-        median_rank_data_45 <- estimate_cdf(x = rel_data_45, methods = "mr")
-        weibull_params_45 <- weibull_params_45_r()
+        for (angle in angles) {
+          refined_data <- data_combined[data_combined$Winkel == angle, ]
+          rel_data <- reliability_data(
+            x = refined_data$Biegungsanzahl,
+            status = refined_data$Status
+          )
+          median_data <- estimate_cdf(x = rel_data, methods = "mr")
+          plot_data <- rbind(plot_data, median_data)
+          est_list[[as.character(angle)]] <- params[[as.character(angle)]]
+        }
         
-        plot <- plot_prob(
-          x = median_rank_data_45,
-          title_main = "Weibull - Ausfallwahrscheinlichkeiten für alle Winkel",
+        # Basisplot erstellen
+        class(est_list) <- c("wt_model_estimation_list")
+        base_plot <- plot_prob(
+          x = plot_data,
+          distribution = "weibull",
+          title_main = "Weibull - Wahrscheinlichkeitsnetz für alle Winkel",
           title_x = "Biegungsanzahl",
           title_y = "Ausfallwahrscheinlichkeit in %",
-          title_trace = "45°"
+          title_trace = "Ausfälle",
+          plot_method = "plotly"
         ) %>%
-          plot_mod(
-            x = weibull_params_45,
-            title_trace = "Winkel 45°"
-          )
+          plot_mod(x = est_list)
         
-        # Weibull Plot für 90° hinzufügen
-        rel_data_90 <- reliability_data(
-          x = data_90_r()$Biegungsanzahl,
-          status = data_90_r()$Status
-        )
-        median_rank_data_90 <- estimate_cdf(x = rel_data_90, methods = "mr")
-        weibull_params_90 <- weibull_params_90_r()
-        
-        plot <- plot %>%
-          add_trace(
-            x = median_rank_data_90$x,
-            y = median_rank_data_90$prob,
-            type = "scatter",
-            name = "90°"
-          ) %>%
-          plot_mod(
-            x = weibull_params_90,
-            title_trace = "Winkel 90°"
-          )
-        
-        # Weibull Plot für 180° hinzufügen
-        rel_data_180 <- reliability_data(
-          x = data_180_r()$Biegungsanzahl,
-          status = data_180_r()$Status
-        )
-        median_rank_data_180 <- estimate_cdf(x = rel_data_180, methods = "mr")
-        weibull_params_180 <- weibull_params_180_r()
-        
-        plot <- plot %>%
-          add_trace(
-            x = median_rank_data_180$x,
-            y = median_rank_data_180$prob,
-            type = "scatter",
-            name = "180°"
-          ) %>%
-          plot_mod(
-            x = weibull_params_180,
-            title_trace = "Winkel 180°"
-          )
-        
-        plot
+        return(base_plot)
       })
       
-      # Wöhler-Linie erstellen
+      # Erstellung des Wöhler-Plots mit den Quantilen
       woehler_plot_r <- reactive({
-        ggplot(data = rbind(data_45_r(), data_90_r(), data_180_r()), aes(x = Biegungsanzahl, y = Status)) +
-          geom_point() +
-          labs(title = "Wöhler-Linie", x = "Biegungsanzahl", y = "Belastung") +
-          theme_minimal()
+        data_combined <- rbind(data_45_r(), data_90_r(), data_180_r())
+        params <- weibull_params_r()
+        
+        # Berechnung der Quantile für die Winkel
+        quantiles_5 <- c(
+          predict_quantile(p = 0.05, dist_params = params[["45"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.05, dist_params = params[["90"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.05, dist_params = params[["180"]]$coefficients, distribution = "weibull")
+        )
+        
+        quantiles_50 <- c(
+          predict_quantile(p = 0.50, dist_params = params[["45"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.50, dist_params = params[["90"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.50, dist_params = params[["180"]]$coefficients, distribution = "weibull")
+        )
+        
+        quantiles_95 <- c(
+          predict_quantile(p = 0.95, dist_params = params[["45"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.95, dist_params = params[["90"]]$coefficients, distribution = "weibull"),
+          predict_quantile(p = 0.95, dist_params = params[["180"]]$coefficients, distribution = "weibull")
+        )
+        
+        # Plot für Wöhlerlinie erstellen
+        woehler_plot <- plot_woehler_layout(
+          x = data_combined$Biegungsanzahl,
+          y = data_combined$Winkel,
+          title_main = "Wöhlerlinie für alle Winkel",
+          title_x = "Biegungsanzahl",
+          title_y = "Belastung",
+          title_trace = "Winkel",
+          plot_method = "plotly"
+        ) %>%
+          add_trace(
+            x = quantiles_5,
+            y = c(45, 90, 180),
+            type = "scatter",
+            mode = "markers+lines",
+            name = "5% Ausfallwkt.",
+            line = list(color = "red"),
+            marker = list(color = "red", size = 10)
+          ) %>%
+          add_trace(
+            x = quantiles_50,
+            y = c(45, 90, 180),
+            type = "scatter",
+            mode = "markers+lines",
+            name = "50% Ausfallwkt.",
+            line = list(color = "green"),
+            marker = list(color = "green", size = 10)
+          ) %>%
+          add_trace(
+            x = quantiles_95,
+            y = c(45, 90, 180),
+            type = "scatter",
+            mode = "markers+lines",
+            name = "95% Ausfallwkt.",
+            line = list(color = "blue"),
+            marker = list(color = "blue", size = 10)
+          )
+        
+        return(woehler_plot)
       })
       
-      # Weibull-Plot und Wöhlerlinie zusammen anzeigen, falls angekreuzt
+      # Kombiniertes Darstellen von Weibull- und Wöhler-Plot
       combined_plot_r <- reactive({
         if (input$combine_plots) {
-          plot <- weibull_plot_r() +
-            geom_line(data = rbind(data_45_r(), data_90_r(), data_180_r()), aes(x = Biegungsanzahl, y = Status), color = "blue")
-          return(plot)
+          subplot(
+            weibull_plot_r(), 
+            woehler_plot_r(), 
+            nrows = 2, 
+            shareX = TRUE
+          ) %>%
+            layout(title = "Weibull und Wöhlerlinie kombiniert")
         } else {
           return(NULL)
         }
       })
       
-      # Weibull-Plot in der UI anzeigen (für alle Winkel)
-      output$weibull_plot <- renderPlot({
-        weibull_plot_r()
-      })
-      
-      # Wöhler-Linie in der UI anzeigen
-      output$woehler_plot <- renderPlot({
-        if (!input$combine_plots) {
-          woehler_plot_r()
-        } else {
+      # Darstellung des Weibull-Plots
+      output$weibull_plot <- renderPlotly({
+        if (input$combine_plots) {
           combined_plot_r()
+        } else {
+          weibull_plot_r()
         }
       })
       
-      # Zusammenfassungstabelle für Weibull-Parameter aller Winkel
+      # Darstellung des Wöhler-Plots
+      output$woehler_plot <- renderPlotly({
+        if (!input$combine_plots) {
+          woehler_plot_r()
+        }
+      })
+      
+      # Tabelle mit Weibull-Parametern für alle Winkel
       output$summary_table <- renderDataTable({
-        params_45 <- weibull_params_45_r()$shape_scale_coefficients
-        params_90 <- weibull_params_90_r()$shape_scale_coefficients
-        params_180 <- weibull_params_180_r()$shape_scale_coefficients
-        median_life_45 <- median_lifetime_45_r()
-        median_life_90 <- median_lifetime_90_r()
-        median_life_180 <- median_lifetime_180_r()
+        params <- weibull_params_r()
         datatable(data.frame(
           Winkel = c("45°", "90°", "180°"),
-          T_Shape = c(params_45[1], params_90[1], params_180[1]),
-          b_Scale = c(params_45[2], params_90[2], params_180[2]),
-          Median_Lebensdauer = c(median_life_45, median_life_90, median_life_180)
+          T_Shape = c(params[["45"]]$shape_scale_coefficients[1], 
+                      params[["90"]]$shape_scale_coefficients[1], 
+                      params[["180"]]$shape_scale_coefficients[1]),
+          b_Scale = c(params[["45"]]$shape_scale_coefficients[2], 
+                      params[["90"]]$shape_scale_coefficients[2], 
+                      params[["180"]]$shape_scale_coefficients[2])
         ))
       })
       
-      # Tabelle der Wahrscheinlichkeitsschätzungen für alle Winkel
+      # Raffungsfaktoren-Tabelle
+      output$raffungsfaktoren_table <- renderDataTable({
+        params <- weibull_params_r()
+        data.frame(
+          Verhältnis = c("T45/T90", "T45/T180", "T90/T180"),
+          Raffungsfaktor = c(
+            params[["45"]]$shape_scale_coefficients[1] / params[["90"]]$shape_scale_coefficients[1],
+            params[["45"]]$shape_scale_coefficients[1] / params[["180"]]$shape_scale_coefficients[1],
+            params[["90"]]$shape_scale_coefficients[1] / params[["180"]]$shape_scale_coefficients[1]
+          )
+        )
+      })
+      
+      # Wahrscheinlichkeitstabelle für alle Winkel
       output$probability_table <- renderDataTable({
         # Wahrscheinlichkeitsschätzungen für 45°
         rel_data_45 <- reliability_data(
@@ -226,7 +245,7 @@ raffungstest_server <- function(id, .values) {
         )
         prob_data_180 <- estimate_cdf(x = rel_data_180, methods = "mr")
         
-        # Kombinierte Tabelle
+        # Kombinierte Wahrscheinlichkeitstabelle für alle Winkel
         datatable(rbind(
           data.frame(Winkel = "45°", prob_data_45),
           data.frame(Winkel = "90°", prob_data_90),
@@ -234,18 +253,7 @@ raffungstest_server <- function(id, .values) {
         ))
       })
       
-      # Berechnung und Anzeige der Raffungsfaktoren (T45/T90, T45/T180, T90/T180)
-      output$raffungsfaktoren_table <- renderDataTable({
-        T45 <- weibull_params_45_r()$shape_scale_coefficients[1]  # Shape-Parameter für 45°
-        T90 <- weibull_params_90_r()$shape_scale_coefficients[1]  # Shape-Parameter für 90°
-        T180 <- weibull_params_180_r()$shape_scale_coefficients[1]  # Shape-Parameter für 180°
-        data.frame(
-          Verhältnis = c("T45/T90", "T45/T180", "T90/T180"),
-          Raffungsfaktor = c(T45 / T90, T45 / T180, T90 / T180)
-        )
-      })
-      
-      # Daten-Selektor Logik
+      # Logik für den Daten-Selektor
       data_selector_return <- data_selector_server(
         id = "id_data_selector",
         .values = .values

@@ -78,6 +78,10 @@ ui <- div(
             text = "Raffungstest",
             tabName = "raffungstest"
           )
+        ),
+        menuItem(
+          text = "Info",
+          tabName = "info"
         )
       )
     ),
@@ -113,6 +117,16 @@ ui <- div(
                 width = 12,
                 raffungstest_ui(
                   id = "id_raffungstest"
+                )
+              )
+            ),
+            tabItem(
+              tabName = "info",
+              box(
+                title = "Info",
+                width = 12,
+                info_ui(
+                  id = "id_info"
                 )
               )
             )
@@ -152,6 +166,11 @@ server <- function(input, output, session) {
   
   raffungstest_server(
     id = "id_raffungstest", 
+    .values = .values
+  )
+  
+  info_server(
+    id = "id_info",
     .values = .values
   )
 }

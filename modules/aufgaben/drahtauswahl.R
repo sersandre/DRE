@@ -20,8 +20,8 @@ drahtauswahl_ui <- function(id) {
     dataTableOutput(ns("probability_table")),
     dataTableOutput(ns("summary_table")),
     dataTableOutput(ns("param_table")),
+    checkboxInput(ns("show_params"), "Weibullparameter anzeigen", FALSE),
     checkboxInput(ns("show_data"), "Auswertungsdaten anzeigen", FALSE),
-    checkboxInput(ns("show_params"), "Weibullparameter anzeigen", FALSE)
     
   )
 }

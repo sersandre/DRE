@@ -1,4 +1,3 @@
-# UI-Definition für Raffungstest
 raffungstest_ui <- function(id) {
   ns <- NS(id)
   
@@ -11,11 +10,50 @@ raffungstest_ui <- function(id) {
       "Weibull und Wöhlerlinie gemeinsam anzeigen", 
       value = FALSE
     ),
+    actionButtonQW(
+      inputId = ns("add_weibull_to_viewer"),
+      label = "Weibull Gerade anzeigen",
+      icon = icon("chart-line")
+    ),
+    actionButtonQW(
+      inputId = ns("add_woehler_to_viewer"),
+      label = "Wöhlerlinie anzeigen",
+      icon = icon("chart-line")
+    ),
+    actionButtonQW(
+      inputId = ns("add_combined_to_viewer"),
+      label = "Kombinierte Plots anzeigen",
+      icon = icon("chart-line")
+    ),
+    
+    br(), br(),
+    
+    # Weibull plot output
     plotlyOutput(ns("weibull_plot")),
+    
+    # Wöhler plot output
     plotlyOutput(ns("woehler_plot")),
-    dataTableOutput(ns("summary_table")),
-    dataTableOutput(ns("raffungsfaktoren_table")),
-    dataTableOutput(ns("probability_table"))
+    
+    # Checkboxes to show/hide tables
+    checkboxInput(ns("show_summary_table"), "Weibull-Parameter Tabelle anzeigen", value = FALSE),
+    checkboxInput(ns("show_raffungsfaktoren_table"), "Raffungsfaktoren Tabelle anzeigen", value = FALSE),
+    checkboxInput(ns("show_probability_table"), "Wahrscheinlichkeitstabelle anzeigen", value = FALSE),
+    
+    # Output containers for the tables (hidden by default)
+    conditionalPanel(
+      condition = paste0("input['", ns("show_summary_table"), "'] == true"),
+      dataTableOutput(ns("summary_table"))
+    ),
+    
+    conditionalPanel(
+      condition = paste0("input['", ns("show_raffungsfaktoren_table"), "'] == true"),
+      dataTableOutput(ns("raffungsfaktoren_table"))
+    ),
+    
+    conditionalPanel(
+      condition = paste0("input['", ns("show_probability_table"), "'] == true"),
+      dataTableOutput(ns("probability_table"))
+    )
   )
 }
 
@@ -101,6 +139,7 @@ raffungstest_server <- function(id, .values) {
       
       # Erstellung des Wöhler-Plots mit den Quantilen
       woehler_plot_r <- reactive({
+        
         data_combined <- rbind(data_45_r(), data_90_r(), data_180_r())
         params <- weibull_params_r()
         
@@ -139,7 +178,7 @@ raffungstest_server <- function(id, .values) {
             type = "scatter",
             mode = "markers+lines",
             name = "5% Ausfallwkt.",
-            line = list(color = "red"),
+            line = list(color = "red", dash = "dot"),
             marker = list(color = "red", size = 10)
           ) %>%
           add_trace(
@@ -148,7 +187,7 @@ raffungstest_server <- function(id, .values) {
             type = "scatter",
             mode = "markers+lines",
             name = "50% Ausfallwkt.",
-            line = list(color = "green"),
+            line = list(color = "green", dash = "solid"),
             marker = list(color = "green", size = 10)
           ) %>%
           add_trace(
@@ -157,8 +196,11 @@ raffungstest_server <- function(id, .values) {
             type = "scatter",
             mode = "markers+lines",
             name = "95% Ausfallwkt.",
-            line = list(color = "blue"),
+            line = list(color = "blue", dash = "dot"),
             marker = list(color = "blue", size = 10)
+          ) %>%
+          layout(
+            yaxis = list(type = "log", title = "Belastung")
           )
         
         return(woehler_plot)
@@ -192,6 +234,63 @@ raffungstest_server <- function(id, .values) {
       output$woehler_plot <- renderPlotly({
         if (!input$combine_plots) {
           woehler_plot_r()
+        }
+      })
+      
+      # Weibull Gerade im Viewer anzeigen
+      observeEvent(input$add_weibull_to_viewer, {
+        plot_output_id <- paste0("weibull_viewer_", data_selector_return$name_r())
+        
+        .values$viewer$append_tab(
+          tab = tabPanel(
+            title = paste("Weibull Gerade:", data_selector_return$name_r()),
+            value = paste0("weibull_viewer_", data_selector_return$name_r()),
+            plotlyOutput(ns(plot_output_id), height = "600px", width = "100%")
+          )
+        )
+        
+        if (!hasName(output, plot_output_id)) {
+          output[[plot_output_id]] <- renderPlotly({
+            weibull_plot_r()
+          })
+        }
+      })
+      
+      # Wöhler Linie im Viewer anzeigen
+      observeEvent(input$add_woehler_to_viewer, {
+        plot_output_id <- paste0("woehler_viewer_", data_selector_return$name_r())
+        
+        .values$viewer$append_tab(
+          tab = tabPanel(
+            title = paste("Wöhler Linie:", data_selector_return$name_r()),
+            value = paste0("woehler_viewer_", data_selector_return$name_r()),
+            plotlyOutput(ns(plot_output_id), height = "600px", width = "100%")
+          )
+        )
+        
+        if (!hasName(output, plot_output_id)) {
+          output[[plot_output_id]] <- renderPlotly({
+            woehler_plot_r()
+          })
+        }
+      })
+      
+      # Kombinierte Plots im Viewer anzeigen
+      observeEvent(input$add_combined_to_viewer, {
+        plot_output_id <- paste0("combined_viewer_", data_selector_return$name_r())
+        
+        .values$viewer$append_tab(
+          tab = tabPanel(
+            title = paste("Kombinierte Plots:", data_selector_return$name_r()),
+            value = paste0("combined_viewer_", data_selector_return$name_r()),
+            plotlyOutput(ns(plot_output_id), height = "600px", width = "100%")
+          )
+        )
+        
+        if (!hasName(output, plot_output_id)) {
+          output[[plot_output_id]] <- renderPlotly({
+            combined_plot_r()
+          })
         }
       })
       

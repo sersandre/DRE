@@ -117,7 +117,7 @@ drahtauswahl_server <- function(id, .values) {
         params <- dict()
         est_list <- list()
         names <- list()
-        sample <- materials[1]
+        print(materials)
         
         # Parameterschätzung und Rangregression für alle gegebenen Materialien
         for (material in materials) {
@@ -127,11 +127,14 @@ drahtauswahl_server <- function(id, .values) {
             x = refined_data,
             methods = "mr"
           )
+          for (i in 1:length(median_data$id)) {
+            median_data$id[i] <- sprintf("%s%d", material, i)
+          }
           plot_data <- rbind(plot_data, median_data)
           params[[material]] <- weibull_params
           est_list[[material]] <- weibull_params
         }
-        # Erstellen des Basis-Weibullplots
+        # Erstellen des Weibullplots
         class(est_list) <- c("wt_model_estimation_list")
         base_plot <- plot_prob(
           x = plot_data,
